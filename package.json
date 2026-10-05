@@ -1,0 +1,25 @@
+{
+  "name": "lyricview",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LarissaNamu/LyricView.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/LarissaNamu/LyricView/issues"
+  },
+  "homepage": "https://github.com/LarissaNamu/LyricView#readme",
+  "devDependencies": {
+    "electron": "44.5.1"
+  }
+}
