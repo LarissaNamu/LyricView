@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'">
+  <title>LyricView Settings</title><link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <header><span class="eyebrow">LYRICVIEW</span><h1>Make room for the music.</h1><p>Changes apply as you go.</p></header>
+  <main>
+    <section><h2>Account</h2><p id="accountStatus" role="status">Not connected</p>
+      <label for="clientId">Spotify Client ID</label><div class="input-row"><input id="clientId" maxlength="32" placeholder="Paste your 32-character Client ID" spellcheck="false"><button id="saveClient">Save</button></div>
+      <p class="hint">Register this exact redirect URI in your Spotify app:</p><code id="redirectUri">http://127.0.0.1:43821/callback</code>
+      <div class="button-row"><button id="login" class="primary">Connect Spotify</button><button id="logout" hidden>Log out</button><button id="preview">Try demo</button></div>
+    </section>
+    <section><h2>Appearance</h2>
+      <label class="control-row" for="currentColor">Current line color<input id="currentColor" type="color"></label>
+      <label class="control-row" for="otherColor">Other lines color<input id="otherColor" type="color"></label>
+      <label for="fontSize">Font size <output id="fontSizeValue"></output></label><input id="fontSize" type="range" min="12" max="72" step="1">
+      <label for="fontFamily">Font family</label><select id="fontFamily"><option>Segoe UI</option><option>Arial</option><option>Georgia</option><option>Verdana</option><option>monospace</option></select>
+      <label for="opacity">Text opacity <output id="opacityValue"></output></label><input id="opacity" type="range" min="0.15" max="1" step="0.05">
+      <label for="linesShown">Lines displayed</label><select id="linesShown"><option value="1">1 — current line</option><option value="3">3 — previous, current, next</option><option value="5">5 — more context</option></select>
+    </section>
+    <section><h2>Behavior</h2>
+      <label class="control-row" for="alwaysOnTop">Always on top<input id="alwaysOnTop" type="checkbox"></label>
+      <label class="control-row" for="clickThrough">Lock position and click-through<input id="clickThrough" type="checkbox"></label>
+      <p class="hint">When locked, press Ctrl+Shift+, (Cmd+Shift+, on Mac) to reopen Settings.</p>
+      <label for="hotkey">Show / hide shortcut</label><div class="input-row"><input id="hotkey" spellcheck="false"><button id="saveHotkey">Apply</button></div>
+      <p class="hint">Example: CommandOrControl+Shift+L</p>
+    </section>
+    <p id="feedback" role="status" aria-live="polite"></p>
+  </main>
+  <footer><button id="reset">Reset appearance</button><div><button id="quit">Quit app</button><button id="close" class="primary">Close</button></div></footer>
+  <script src="settings.js"></script>
+</body>
+</html>

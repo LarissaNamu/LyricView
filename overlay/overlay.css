@@ -1,0 +1,22 @@
+:root { --font-size:32px; --current-color:#fff; --other-color:#b6bbc9; --opacity:1; --font-family:'Segoe UI'; color-scheme:dark; }
+* { box-sizing:border-box; }
+html,body { margin:0; width:100%; height:100%; overflow:hidden; background:transparent; font-family:var(--font-family),sans-serif; }
+#overlay { position:relative; width:100%; height:100%; padding:30px 48px; display:flex; align-items:center; justify-content:center; -webkit-app-region:drag; border:1px dashed transparent; user-select:none; }
+#overlay:hover { border-color:#ffffff50; }
+body.locked #overlay { -webkit-app-region:no-drag; }
+#lyrics { width:100%; text-align:center; opacity:var(--opacity); }
+.line { color:var(--other-color); font-size:calc(var(--font-size) * .73); line-height:1.4; min-height:1.4em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.line.current { color:var(--current-color); font-size:var(--font-size); font-weight:600; }
+.plain { white-space:pre-wrap; color:var(--current-color); font-size:var(--font-size); max-height:100%; overflow:auto; -webkit-app-region:no-drag; }
+#lyrics:has(.plain) { height:100%; }
+#welcome { text-align:center; color:var(--current-color); font-size:18px; }
+#message { margin:0 0 16px; }
+button { -webkit-app-region:no-drag; cursor:pointer; font:inherit; border:1px solid #ffffff40; background:#18212c; color:#fff; border-radius:8px; padding:9px 15px; }
+button:hover { background:#2b3847; }
+button:focus-visible { outline:2px solid #91dfcb; outline-offset:3px; }
+button:disabled { cursor:wait; opacity:.6; }
+.actions { display:flex; justify-content:center; gap:8px; }
+#gear { position:absolute; top:8px; right:8px; padding:4px 9px; font-size:21px; opacity:0; }
+#overlay:hover #gear,#gear:focus-visible { opacity:1; }
+#demoBadge { position:absolute; bottom:8px; left:12px; font:10px 'Segoe UI',sans-serif; letter-spacing:2px; color:#b6bbc9; }
+[hidden] { display:none!important; }

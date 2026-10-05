@@ -1,11 +1,14 @@
 {
   "name": "lyricview",
   "version": "1.0.0",
-  "description": "",
+  "description": "Floating synchronized lyrics for Spotify",
   "main": "main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "electron ."
+    "test": "node --test tests/core.test.js",
+    "start": "electron .",
+    "demo": "electron . --demo",
+    "smoke": "electron . --smoke-test",
+    "check": "node scripts/check.js"
   },
   "repository": {
     "type": "git",

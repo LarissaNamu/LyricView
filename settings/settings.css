@@ -1,0 +1,31 @@
+:root { color-scheme:dark; font:14px 'Segoe UI',Arial,sans-serif; color:#edf1f5; background:#11151d; }
+* { box-sizing:border-box; }
+body { margin:0; }
+header { padding:28px 28px 20px; border-bottom:1px solid #29313d; }
+.eyebrow { font-size:10px; letter-spacing:3px; color:#91dfcb; font-weight:700; }
+h1 { font-size:24px; font-weight:600; letter-spacing:-.6px; margin:12px 0 6px; }
+header p,.hint { color:#a5aebe; font-size:12px; line-height:1.5; }
+header p { margin:0; }
+main { padding:0 28px 86px; }
+section { padding:22px 0; border-bottom:1px solid #29313d; }
+h2 { font-size:15px; margin:0 0 16px; }
+label { display:block; margin:14px 0 8px; }
+input,select,button { font:inherit; }
+input:not([type=range]):not([type=checkbox]):not([type=color]),select { width:100%; min-width:0; background:#1b2230; border:1px solid #354053; border-radius:6px; padding:9px 10px; color:#edf1f5; }
+.input-row,.button-row { display:flex; gap:8px; align-items:center; }
+.button-row { margin-top:16px; flex-wrap:wrap; }
+button { cursor:pointer; color:#edf1f5; background:#242e3e; border:1px solid #354053; border-radius:6px; padding:8px 12px; white-space:nowrap; }
+button:hover { background:#334056; }
+button.primary { background:#91dfcb; color:#11251f; border-color:#91dfcb; font-weight:600; }
+button:disabled { opacity:.5; cursor:wait; }
+:focus-visible { outline:2px solid #91dfcb; outline-offset:2px; }
+.control-row { display:flex; align-items:center; justify-content:space-between; min-height:30px; }
+input[type=color] { width:44px; height:30px; border:1px solid #354053; border-radius:4px; padding:2px; background:#1b2230; cursor:pointer; }
+input[type=checkbox] { width:18px; height:18px; accent-color:#91dfcb; }
+input[type=range] { width:100%; accent-color:#91dfcb; }
+output { float:right; color:#91dfcb; }
+code { display:block; font-size:12px; padding:10px; background:#1b2230; border-radius:6px; user-select:all; overflow-wrap:anywhere; }
+#feedback { color:#ffc994; min-height:20px; }
+footer { position:fixed; left:0; right:0; bottom:0; display:flex; justify-content:space-between; padding:14px 18px; background:#11151d; border-top:1px solid #29313d; }
+footer>div { display:flex; gap:8px; }
+[hidden] { display:none!important; }

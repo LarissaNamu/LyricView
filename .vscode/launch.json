@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "LyricView: Demo",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+      "windows": { "runtimeExecutable": "${workspaceFolder}/node_modules/electron/dist/electron.exe" },
+      "args": [".", "--demo"],
+      "cwd": "${workspaceFolder}",
+      "env": { "ELECTRON_RUN_AS_NODE": null },
+      "outputCapture": "std"
+    },
+    {
+      "name": "LyricView: Spotify",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+      "windows": { "runtimeExecutable": "${workspaceFolder}/node_modules/electron/dist/electron.exe" },
+      "args": ["."],
+      "cwd": "${workspaceFolder}",
+      "env": { "ELECTRON_RUN_AS_NODE": null },
+      "outputCapture": "std"
+    }
+  ]
+}

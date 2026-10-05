@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'none'; object-src 'none'; base-uri 'none'">
+  <title>LyricView</title><link rel="stylesheet" href="overlay.css">
+</head>
+<body>
+  <main id="overlay">
+    <div id="lyrics" aria-live="off"></div>
+    <div id="welcome" hidden><p id="message" role="status"></p><div class="actions"><button id="connect">Connect Spotify</button><button id="demo">Try demo</button></div></div>
+    <button id="gear" title="Settings (Ctrl+Shift+,)" aria-label="Open settings">⚙</button>
+    <span id="demoBadge" hidden>DEMO</span>
+  </main>
+  <script src="../sync.js"></script><script src="overlay.js"></script>
+</body>
+</html>
