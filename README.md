@@ -37,11 +37,14 @@ LRCLIB supplies synchronized or plain lyrics and needs no API key: https://lrcli
 
 - Drag anywhere on the lyric area to move the overlay. Position and size are saved.
 - Hover to reveal the settings gear; right-click the overlay for Settings, demo, and Quit.
+- Synchronized lyric rows slide as the current line advances, and song changes fade between lyric displays. Seeks jump directly to their new position. Animations respect the system reduced-motion preference.
 - `Ctrl+Shift+L` shows/hides the overlay (`Cmd+Shift+L` on macOS). Change it in Settings.
 - `Ctrl+Shift+,` opens Settings even when the overlay is hidden or click-through is enabled (`Cmd+Shift+,` on macOS).
 - Quit from Settings or the right-click menu. Closing Settings leaves the overlay running.
+- Window dimensions are chosen by the user using unlocked edge resizing or Width/Height controls in Settings. Lyrics wrap at that width; font changes preserve the size and position.
 - Appearance updates immediately: colors, font size (12–72 px), font family, opacity and 1/3/5 lines.
-- Lock mode forwards mouse input to applications underneath and disables dragging/resizing. Reopen Settings with the recovery shortcut to unlock.
+- Backdrop color and strength control a soft rounded background behind the lyrics. The default is black at 22% strength; 0% disables it. These preferences apply live and are saved separately from text opacity.
+- Lock mode forwards mouse input to applications underneath and disables dragging/resizing. Hover the overlay to reveal the gear; only the gear accepts clicks. Settings can also be reopened with the recovery shortcut.
 
 ## Files
 
@@ -62,4 +65,8 @@ Real Spotify login, live synchronization, dragging, game overlays, and performan
 
 ## Current scope
 
-Core overlay, Spotify and LRCLIB integration, persistence, customization, click-through and shortcuts are implemented. Packaging/installers, tray support, startup launch, manual timing offsets, animation and other future ideas are deferred. No live Spotify verification is claimed until you configure and authorize the app.
+Core overlay, Spotify and LRCLIB integration, persistence, customization, click-through and shortcuts are implemented. Packaging/installers, tray support, startup launch, manual timing offsets and other future ideas are deferred. No live Spotify verification is claimed until you configure and authorize the app.
+
+The overlay uses equal 30px padding on all sides. Both window modes stay on top; locked mode passes clicks through the lyrics and prevents manual resizing, while its hover settings button remains clickable.
+
+Window size is now manual: drag the unlocked window edges or use Width/Height in Settings. Font changes leave the box size and position unchanged. Lyrics wrap, with the current lyric centered vertically; surrounding context can extend beyond a short window.

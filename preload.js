@@ -10,6 +10,13 @@ contextBridge.exposeInMainWorld('lyricView', {
   updateSettings: patch => invoke('settings-update', patch), resetSettings: () => invoke('settings-reset'),
   login: () => invoke('spotify-login'), logout: () => invoke('spotify-logout'),
   setDemo: enabled => invoke('demo', enabled), quit: () => invoke('quit'),
+  beginDrag: () => invoke('drag-begin'), moveDrag: () => invoke('drag-move'), endDrag: () => invoke('drag-end'),
+  reportGearBounds: rect => invoke('gear-bounds', rect), refreshHover: () => invoke('refresh-hover'),
+  onLockedHover: callback => {
+    const listener = (_event, hovered) => callback(hovered);
+    ipcRenderer.on('locked-hover', listener);
+    return () => ipcRenderer.removeListener('locked-hover', listener);
+  },
   onState: callback => {
     const listener = (_event, value) => callback(value);
     ipcRenderer.on('state', listener);

@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, globalShortcut, screen, shell, safeStorage, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
-const { Store, DEFAULTS, fitBounds } = require('./store');
+const { Store, DEFAULTS, fitBounds, lockedHitTest } = require('./store');
 const { Spotify, REDIRECT_URI } = require('./spotify');
 const { Lyrics } = require('./lyrics');
 
@@ -9,6 +9,9 @@ const smoke = process.argv.includes('--smoke-test');
 let demo = process.argv.includes('--demo') || smoke;
 if (smoke) app.setPath('userData', path.join(__dirname, 'tmp', 'smoke-data'));
 let overlay, settingsWindow, store, spotify, lyrics, pollTimer, boundsTimer;
+let dragOrigin;
+let gearBounds, lockTimer, mouseIgnored, lastHoverKey;
+let exiting = false;
 let generation = 0, demoStart = performance.now(), lyricTrack = null, retryLyricsAt = 0, failures = 0;
 let state = { status: 'disconnected', message: 'Connect Spotify to get started', connected: false, playback: null, lyrics: null, sampledAt: 0 };
 const demoLines = [
@@ -32,12 +35,31 @@ function secureWindow(win) {
 }
 const webPreferences = { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true };
 function applyWindowSettings() {
+  dragOrigin = null;
   const s = store.settings;
-  overlay.setAlwaysOnTop(s.alwaysOnTop, process.platform === 'darwin' ? 'screen-saver' : 'normal');
-  overlay.setIgnoreMouseEvents(s.clickThrough, { forward: true });
   overlay.setMovable(!s.clickThrough); overlay.setResizable(!s.clickThrough);
+  overlay.setFocusable(!s.clickThrough);
+  enforceTopmost();
+  clearInterval(lockTimer); lastHoverKey = undefined;
+  updateLockedHover();
+  if (s.clickThrough && !smoke) lockTimer = setInterval(updateLockedHover, 50);
+}
+function enforceTopmost() {
+  if (!overlay || overlay.isDestroyed() || exiting) return;
+  overlay.setAlwaysOnTop(true, 'screen-saver');
+}
+function updateLockedHover(cursor = screen.getCursorScreenPoint()) {
+  if (!overlay || overlay.isDestroyed()) return;
+  const locked = store.settings.clickThrough;
+  const hit = locked && (smoke || overlay.isVisible()) ? lockedHitTest(overlay.getBounds(), gearBounds, cursor) : { hovered: false, gearHovered: false };
+  const ignore = locked && !hit.gearHovered;
+  if (mouseIgnored !== ignore) { overlay.setIgnoreMouseEvents(ignore, { forward: true }); mouseIgnored = ignore; enforceTopmost(); }
+  const key = `${locked}:${hit.hovered}`;
+  if (key !== lastHoverKey) { lastHoverKey = key; overlay.webContents.send('locked-hover', hit.hovered); }
 }
 function registerShortcuts(hotkey) {
+  // Hidden tests must not compete with shortcuts owned by a running real app.
+  if (smoke) return true;
   globalShortcut.unregisterAll();
   const recovery = 'CommandOrControl+Shift+,';
   if (hotkey === recovery) return false;
@@ -49,11 +71,12 @@ function registerShortcuts(hotkey) {
 }
 function createOverlay() {
   const bounds = fitBounds(store.settings.position, screen.getAllDisplays().map(d => d.workArea));
-  overlay = new BrowserWindow({ ...bounds, minWidth: 320, minHeight: 140, transparent: true, frame: false, hasShadow: false, skipTaskbar: true, resizable: true, show: false, title: 'LyricView', backgroundColor: '#00000000', webPreferences });
+  overlay = new BrowserWindow({ ...bounds, minWidth: 80, minHeight: 80, transparent: true, frame: false, hasShadow: false, skipTaskbar: true, alwaysOnTop: true, focusable: !store.settings.clickThrough, resizable: true, show: false, title: 'LyricView', backgroundColor: '#00000000', webPreferences });
   secureWindow(overlay); overlay.loadFile(path.join(__dirname, 'overlay', 'index.html'));
   overlay.once('ready-to-show', () => { if (!smoke) overlay.showInactive(); });
-  const saveBounds = () => { clearTimeout(boundsTimer); boundsTimer = setTimeout(() => store.update({ position: overlay.getBounds() }), 250); };
+  const saveBounds = () => { clearTimeout(boundsTimer); boundsTimer = setTimeout(() => { if (!overlay || overlay.isDestroyed()) return; store.update({ position: overlay.getBounds() }); broadcast(); }, 250); };
   overlay.on('move', saveBounds); overlay.on('resize', saveBounds);
+  overlay.on('blur', enforceTopmost); overlay.on('show', enforceTopmost); overlay.on('restore', enforceTopmost);
   overlay.webContents.on('context-menu', () => Menu.buildFromTemplate([
     { label: 'Settings', click: () => openSettings() }, { label: demo ? 'Leave demo' : 'Preview demo', click: () => switchDemo(!demo) },
     { type: 'separator' }, { label: 'Quit LyricView', click: () => app.quit() }
@@ -125,11 +148,28 @@ async function poll(epoch) {
 }
 function handle(channel, handler) {
   ipcMain.handle(channel, async (event, ...args) => {
+    if (exiting) return { ok: true };
     if (![overlay, settingsWindow].some(win => win && !win.isDestroyed() && win.webContents === event.sender) || event.senderFrame !== event.sender.mainFrame) throw new Error('Invalid sender');
     try { return { ok: true, value: await handler(...args) }; } catch (error) { return { ok: false, error: error.message }; }
   });
 }
 function setupIpc() {
+  handle('gear-bounds', rect => {
+    if (!rect || !['x', 'y', 'width', 'height'].every(key => Number.isFinite(rect[key])) || rect.width < 1 || rect.width > 100 || rect.height < 1 || rect.height > 100) throw new Error('Invalid settings button bounds');
+    gearBounds = rect; updateLockedHover();
+  });
+  handle('refresh-hover', () => { if (!smoke) updateLockedHover(); });
+  handle('drag-begin', () => {
+    if (store.settings.clickThrough) return;
+    const cursor = screen.getCursorScreenPoint(), bounds = overlay.getBounds();
+    dragOrigin = { x: cursor.x - bounds.x, y: cursor.y - bounds.y };
+  });
+  handle('drag-move', () => {
+    if (!dragOrigin || store.settings.clickThrough) return;
+    const cursor = screen.getCursorScreenPoint();
+    overlay.setPosition(Math.round(cursor.x - dragOrigin.x), Math.round(cursor.y - dragOrigin.y));
+  });
+  handle('drag-end', () => { dragOrigin = null; });
   handle('get-state', () => snapshot());
   handle('open-settings', () => { openSettings(); });
   handle('close-settings', () => settingsWindow?.close());
@@ -137,12 +177,24 @@ function setupIpc() {
   handle('demo', enabled => { if (typeof enabled !== 'boolean') throw new Error('Invalid demo option'); switchDemo(enabled); });
   handle('settings-update', patch => {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('Invalid settings');
-    const allowed = ['fontSize', 'fontFamily', 'currentColor', 'otherColor', 'opacity', 'linesShown', 'clickThrough', 'alwaysOnTop', 'hotkey', 'spotifyClientId'];
+    const allowed = ['fontSize', 'fontFamily', 'currentColor', 'otherColor', 'opacity', 'linesShown', 'clickThrough', 'alwaysOnTop', 'hotkey', 'spotifyClientId', 'backdropColor', 'backdropStrength', 'windowWidth', 'windowHeight'];
     if (Object.keys(patch).some(key => !allowed.includes(key))) throw new Error('Unknown setting');
     if (patch.spotifyClientId !== undefined && patch.spotifyClientId !== '' && !/^[a-f0-9]{32}$/i.test(patch.spotifyClientId.trim())) throw new Error('A Spotify Client ID must contain 32 hexadecimal characters.');
     if ((patch.hotkey !== undefined || patch.clickThrough === true) && !registerShortcuts(patch.hotkey ?? store.settings.hotkey)) { registerShortcuts(store.settings.hotkey); throw new Error('That shortcut is invalid, reserved, or already in use.'); }
     if (patch.spotifyClientId !== undefined && patch.spotifyClientId.trim() !== store.settings.spotifyClientId) { stopPolling(); spotify.logout(); demo = false; disconnected(); }
-    store.update(patch); applyWindowSettings(); broadcast(); return snapshot();
+    // Capture live native bounds before applying explicit size changes.
+    const bounds = overlay.getBounds();
+    const sized = patch.windowWidth !== undefined || patch.windowHeight !== undefined;
+    const position = { ...bounds, ...(patch.windowWidth !== undefined ? { width: patch.windowWidth } : {}), ...(patch.windowHeight !== undefined ? { height: patch.windowHeight } : {}) };
+    const { windowWidth, windowHeight, ...appearance } = patch;
+    if (sized && (![windowWidth, windowHeight].every(value => value === undefined || (Number.isFinite(value) && value >= 80 && value <= 16000)))) throw new Error('Window dimensions must be between 80 and 16000 pixels.');
+    store.update({ ...appearance, position });
+    if (sized) {
+      const display = screen.getDisplayMatching(bounds).workArea;
+      const fitted = fitBounds(store.settings.position, [display]);
+      overlay.setBounds(fitted); store.update({ position: fitted });
+    }
+    applyWindowSettings(); broadcast(); return snapshot();
   });
   handle('settings-reset', () => {
     if (!registerShortcuts(DEFAULTS.hotkey)) { registerShortcuts(store.settings.hotkey); throw new Error('Default shortcut is unavailable.'); }
@@ -163,7 +215,10 @@ async function smokeTest() {
   async function waitFor(win, expression, label) {
     let lastError;
     for (let i = 0; i < 100; i++) {
-      try { if (await win.webContents.executeJavaScript(expression)) return; }
+      try {
+        const ready = await Promise.race([win.webContents.executeJavaScript(expression), new Promise((_, reject) => setTimeout(() => reject(new Error('Renderer check timed out')), 1000))]);
+        if (ready) return;
+      }
       catch (error) { lastError = error; }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
@@ -179,10 +234,79 @@ async function smokeTest() {
   const saved = JSON.parse(fs.readFileSync(store.file, 'utf8'));
   if (saved.fontSize !== 40) throw new Error('SMOKE FAIL [persistence]: settings were not written to disk');
   await waitFor(overlay, 'document.documentElement.style.getPropertyValue("--font-size") === "40px"', 'live appearance update');
+  await panel.webContents.executeJavaScript(`(() => {
+    const color = document.querySelector('#backdropColor'); color.value = '#224466'; color.dispatchEvent(new Event('input', { bubbles: true }));
+    const strength = document.querySelector('#backdropStrength'); strength.value = '0.5'; strength.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await waitFor(overlay, 'getComputedStyle(document.querySelector("#overlay"), "::before").backgroundColor === "rgba(34, 68, 102, 0.5)"', 'backdrop color and strength');
+  await waitFor(panel, 'document.querySelector("#backdropStrengthValue").textContent === "50%"', 'backdrop strength label');
+  const backdropSaved = JSON.parse(fs.readFileSync(store.file, 'utf8'));
+  if (backdropSaved.backdropColor !== '#224466' || backdropSaved.backdropStrength !== 0.5) throw new Error('SMOKE FAIL [backdrop]: preference not persisted');
+  await panel.webContents.executeJavaScript('window.lyricView.updateSettings({ backdropStrength: 0 })');
+  await waitFor(overlay, 'getComputedStyle(document.querySelector("#overlay"), "::before").backgroundColor === "rgba(34, 68, 102, 0)"', 'backdrop off');
+  await panel.webContents.executeJavaScript(`(() => { const width = document.querySelector('#windowWidth'); width.value = '360'; width.dispatchEvent(new Event('change')); const height = document.querySelector('#windowHeight'); height.value = '400'; height.dispatchEvent(new Event('change')); })()`);
+  await waitFor(panel, 'state.settings.position.width === 360 && state.settings.position.height === 400', 'size controls');
+  const chosenBounds = overlay.getBounds();
+  if (chosenBounds.width !== 360 || chosenBounds.height !== 400) throw new Error('SMOKE FAIL [size]: explicit window dimensions ignored');
+  for (const clickThrough of [false, true]) {
+    for (const fontSize of [12, 72, 32, 12]) {
+      await panel.webContents.executeJavaScript(`window.lyricView.updateSettings({ clickThrough: ${clickThrough}, fontSize: ${fontSize} })`);
+      await waitFor(overlay, `document.documentElement.style.getPropertyValue('--font-size') === '${fontSize}px'`, 'font update');
+      const bounds = overlay.getBounds();
+      if (JSON.stringify(bounds) !== JSON.stringify(chosenBounds)) throw new Error('SMOKE FAIL [position]: font update changed window size or position');
+    }
+  }
+  await panel.webContents.executeJavaScript('window.lyricView.updateSettings({ fontSize: 32, linesShown: 1, clickThrough: false })');
+  await waitFor(overlay, 'document.querySelector(".line.current").getBoundingClientRect().height > 32 * 1.4 + 1', 'long lyrics wrap');
+  await waitFor(overlay, 'document.querySelector(".line.current").scrollWidth <= document.querySelector(".line.current").clientWidth + 1', 'wrapped lyrics fit width');
+  overlay.setBounds({ ...chosenBounds, width: 500, height: 420 });
+  await waitFor(panel, 'state.settings.position.width === 500 && state.settings.position.height === 420', 'native resize persisted');
+  if (JSON.parse(fs.readFileSync(store.file, 'utf8')).position.width !== 500) throw new Error('SMOKE FAIL [size]: native width not persisted');
+  await panel.webContents.executeJavaScript('window.lyricView.updateSettings({ fontSize: 40, linesShown: 3 })');
+  overlay.webContents.sendInputEvent({ type: 'mouseMove', x: 200, y: 80 });
+  await waitFor(overlay, 'Number(getComputedStyle(document.querySelector("#gear")).opacity) > 0.9', 'hover settings gear');
+  stopPolling(); demo = false;
+  setState({ status: 'ready', connected: true, message: '', playback: { trackId: 'smoke-track-a', progress_ms: 0, duration_ms: 20000, is_playing: false }, sampledAt: performance.now(), lyrics: { kind: 'synced', lines: demoLines, plain: '' } });
+  await waitFor(overlay, 'layerTrack === "smoke-track-a" && renderedIndex === 0', 'first track');
+  await new Promise(resolve => setTimeout(resolve, 350));
+  setState({ playback: { ...state.playback, progress_ms: 4100 }, sampledAt: performance.now() });
+  await waitFor(overlay, 'renderedIndex === 1', 'next lyric row');
+  const motion = await overlay.webContents.executeJavaScript('reducedMotion.matches || [...document.querySelectorAll(".line")].some(row => row.getAnimations().some(animation => animation.effect.getKeyframes().some(frame => frame.transform?.includes("translateY"))))');
+  if (!motion) throw new Error('SMOKE FAIL [line animation]: lyric rows did not slide');
+  setState({ playback: { ...state.playback, trackId: 'smoke-track-b', progress_ms: 0 }, sampledAt: performance.now() });
+  await waitFor(overlay, 'layerTrack === "smoke-track-b" && renderedIndex === 0', 'song transition');
+  await new Promise(resolve => setTimeout(resolve, 350));
+  await waitFor(overlay, 'document.querySelectorAll(".lyric-layer").length === 1', 'previous song cleanup');
+  await panel.webContents.executeJavaScript('window.lyricView.updateSettings({ clickThrough: true })');
+  if (!overlay.isAlwaysOnTop() || overlay.isResizable() || overlay.isFocusable()) throw new Error('SMOKE FAIL [locked window]: topmost, resize or focus flags incorrect: ' + JSON.stringify({ topmost: overlay.isAlwaysOnTop(), resizable: overlay.isResizable(), focusable: overlay.isFocusable() }));
+  overlay.emit('blur');
+  if (!overlay.isAlwaysOnTop()) throw new Error('SMOKE FAIL [topmost]: blur cleared topmost');
+  if (!gearBounds) throw new Error('SMOKE FAIL [gear]: settings button bounds missing');
+  const lockedBounds = overlay.getBounds();
+  updateLockedHover({ x: lockedBounds.x - 10, y: lockedBounds.y - 10 });
+  if (!mouseIgnored) throw new Error('SMOKE FAIL [lock]: outside overlay is not click-through');
+  await waitFor(overlay, 'Number(getComputedStyle(document.querySelector("#gear")).opacity) < 0.1', 'locked gear hides outside overlay');
+  updateLockedHover({ x: lockedBounds.x + 100, y: lockedBounds.y + 80 });
+  if (!mouseIgnored) throw new Error('SMOKE FAIL [lock]: lyrics are not click-through');
+  await waitFor(overlay, 'Number(getComputedStyle(document.querySelector("#gear")).opacity) > 0.9', 'locked hover reveals gear');
+  updateLockedHover({ x: lockedBounds.x + gearBounds.x + gearBounds.width / 2, y: lockedBounds.y + gearBounds.y + gearBounds.height / 2 });
+  if (mouseIgnored) throw new Error('SMOKE FAIL [lock]: settings button still ignores clicks');
+  panel.close();
+  overlay.webContents.sendInputEvent({ type: 'mouseDown', x: Math.round(gearBounds.x + gearBounds.width / 2), y: Math.round(gearBounds.y + gearBounds.height / 2), button: 'left', clickCount: 1 });
+  overlay.webContents.sendInputEvent({ type: 'mouseUp', x: Math.round(gearBounds.x + gearBounds.width / 2), y: Math.round(gearBounds.y + gearBounds.height / 2), button: 'left', clickCount: 1 });
+  for (let i = 0; i < 50 && (!settingsWindow || settingsWindow.isDestroyed()); i++) await new Promise(resolve => setTimeout(resolve, 100));
+  if (!settingsWindow || settingsWindow.isDestroyed()) throw new Error('SMOKE FAIL [lock]: clicking gear did not reopen Settings');
+  console.log('SMOKE OK: locked settings gear reopened Settings');
+  await overlay.webContents.executeJavaScript('window.lyricView.updateSettings({ clickThrough: false })');
+  if (!overlay.isAlwaysOnTop() || !overlay.isResizable() || !overlay.isFocusable()) throw new Error('SMOKE FAIL [unlocked window]: topmost, resize or focus flags incorrect: ' + JSON.stringify({ topmost: overlay.isAlwaysOnTop(), resizable: overlay.isResizable(), focusable: overlay.isFocusable() }));
   // Screenshot capture depends on Chromium's graphics compositor and is not
   // required to validate rendering, IPC, isolation, or settings persistence.
-  console.log('SMOKE PASS: overlay, settings, sandboxed preload, settings IPC, persistence, live updates');
-  app.quit();
+  console.log('SMOKE PASS: overlay, settings, persistence, backdrop, manual width/height, wrapped lyrics, lyric slide, song transition, topmost in both modes, fixed position through font changes, locked click-through and clickable hover gear');
+  // Exit the isolated fixture directly: the newly opened test window may still
+  // be loading, and graceful window closure can defer test shutdown.
+  app.emit('before-quit');
+  exiting = true;
+  app.exit(0);
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -205,6 +329,10 @@ else {
 }
 app.on('window-all-closed', () => app.quit());
 app.on('before-quit', () => {
+  exiting = true;
+  clearInterval(lockTimer);
   clearTimeout(boundsTimer); stopPolling(); globalShortcut.unregisterAll(); spotify?.close();
   if (store && overlay && !overlay.isDestroyed()) store.update({ position: overlay.getBounds() });
 });
+
+

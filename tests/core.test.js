@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { parseLrc, currentLine, positionAt } = require('../sync');
-const { Store, sanitizeSettings, fitBounds } = require('../store');
+const { Store, sanitizeSettings, fitBounds, lockedHitTest } = require('../store');
 const { Lyrics } = require('../lyrics');
 const { Spotify, pkce } = require('../spotify');
 function directory(t) { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lyricview-test-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir; }
@@ -23,7 +23,7 @@ test('playback interpolation freezes on pause and stays within track duration', 
 });
 test('settings reject untrusted styles and constrain numeric values', () => {
   const result = sanitizeSettings({ fontFamily: 'bad; injection', currentColor: 'red', fontSize: 999, opacity: -1, linesShown: 7, position: { width: 10, height: 900 } });
-  assert.equal(result.fontFamily, 'Segoe UI'); assert.equal(result.currentColor, '#ffffff'); assert.equal(result.fontSize, 72); assert.equal(result.opacity, .15); assert.equal(result.linesShown, 3); assert.equal(result.position.width, 320);
+  assert.equal(result.fontFamily, 'Segoe UI'); assert.equal(result.currentColor, '#ffffff'); assert.equal(result.fontSize, 72); assert.equal(result.opacity, .15); assert.equal(result.linesShown, 3); assert.equal(result.position.width, 80);
 });
 test('settings survive restart and reset preserves the Spotify Client ID', t => {
   const dir = directory(t), store = new Store(dir), clientId = 'a'.repeat(32);
@@ -36,6 +36,42 @@ test('disconnected monitor positions recover inside the primary work area', () =
   assert.ok(result.x >= 0 && result.x + result.width <= 1280); assert.ok(result.y >= 0 && result.y + result.height <= 720);
 });
 const track = { id: 'test', name: 'Song', artists: [{ name: 'Artist' }], album: { name: 'Album' }, duration_ms: 120000 };
+test('both window modes always stay on top, including older saved preferences', () => {
+  assert.equal(sanitizeSettings({ alwaysOnTop: false, clickThrough: true }).alwaysOnTop, true);
+  assert.equal(sanitizeSettings({ alwaysOnTop: false, clickThrough: false }).alwaysOnTop, true);
+});
+
+test('user dimensions persist and font changes leave them untouched', t => {
+  const dir = directory(t), store = new Store(dir);
+  store.update({ position: { x: 800, y: 400, width: 210, height: 110 } });
+  for (const fontSize of [72, 12, 32]) store.update({ fontSize });
+  assert.deepEqual(new Store(dir).settings.position, { x: 800, y: 400, width: 210, height: 110 });
+});
+test('locked hit testing only enables clicks inside the settings button at screen-scaled coordinates', () => {
+  const bounds = { x: -800, y: 200, width: 760, height: 240 }, gear = { x: 712, y: 8, width: 40, height: 40 };
+  assert.deepEqual(lockedHitTest(bounds, gear, { x: -400, y: 300 }), { hovered: true, gearHovered: false });
+  assert.deepEqual(lockedHitTest(bounds, gear, { x: -80, y: 220 }), { hovered: true, gearHovered: true });
+  assert.deepEqual(lockedHitTest(bounds, gear, { x: 0, y: 0 }), { hovered: false, gearHovered: false });
+});
+test('backdrop upgrades existing settings and rejects invalid colors and strength', () => {
+  const defaults = sanitizeSettings({ fontSize: 40 });
+  assert.equal(defaults.backdropColor, '#000000'); assert.equal(defaults.backdropStrength, .22);
+  const invalid = sanitizeSettings({ backdropColor: 'url(bad)', backdropStrength: Infinity });
+  assert.equal(invalid.backdropColor, '#000000'); assert.equal(invalid.backdropStrength, .22);
+  assert.equal(sanitizeSettings({ backdropStrength: -1 }).backdropStrength, 0);
+  assert.equal(sanitizeSettings({ backdropStrength: 2 }).backdropStrength, 1);
+});
+test('backdrop color and strength survive restart independently of text opacity', t => {
+  const dir = directory(t), store = new Store(dir);
+  store.update({ backdropColor: '#224466', backdropStrength: .5, opacity: .75 });
+  const reopened = new Store(dir).settings;
+  assert.equal(reopened.backdropColor, '#224466'); assert.equal(reopened.backdropStrength, .5); assert.equal(reopened.opacity, .75);
+  store.update({ backdropStrength: 0 }); assert.equal(new Store(dir).settings.backdropStrength, 0);
+});
+test('custom dimensions support narrow and tall windows and constrain invalid sizes', () => {
+  assert.deepEqual(sanitizeSettings({ position: { width: 120, height: 1200 } }).position, { width: 120, height: 1200 });
+  assert.deepEqual(sanitizeSettings({ position: { width: -1, height: Infinity } }).position, { width: 80, height: 240 });
+});
 test('lyrics requests include matching metadata and cached results survive restart', async t => {
   const dir = directory(t); let calls = 0;
   const fetcher = async url => { calls++; const q = new URL(url).searchParams; assert.equal(q.get('duration'), '120'); assert.equal(q.get('track_name'), 'Song'); return Response.json({ syncedLyrics: '[00:01.00]Original test line' }); };

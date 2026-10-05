@@ -19,10 +19,18 @@
       <label for="fontSize">Font size <output id="fontSizeValue"></output></label><input id="fontSize" type="range" min="12" max="72" step="1">
       <label for="fontFamily">Font family</label><select id="fontFamily"><option>Segoe UI</option><option>Arial</option><option>Georgia</option><option>Verdana</option><option>monospace</option></select>
       <label for="opacity">Text opacity <output id="opacityValue"></output></label><input id="opacity" type="range" min="0.15" max="1" step="0.05">
+      <label class="control-row" for="backdropColor">Backdrop color<input id="backdropColor" type="color"></label>
+      <label for="backdropStrength">Backdrop strength <output id="backdropStrengthValue"></output></label><input id="backdropStrength" type="range" min="0" max="1" step="0.01">
+      <p class="hint">A soft background adds contrast behind the lyrics. Set strength to 0% to turn it off.</p>
       <label for="linesShown">Lines displayed</label><select id="linesShown"><option value="1">1 — current line</option><option value="3">3 — previous, current, next</option><option value="5">5 — more context</option></select>
     </section>
+    <section><h2>Window size</h2>
+      <label for="windowWidth">Width (px)<input id="windowWidth" type="number" min="80" max="16000" step="1"></label>
+      <label for="windowHeight">Height (px)<input id="windowHeight" type="number" min="80" max="16000" step="1"></label>
+      <p class="hint">Resize the unlocked window by dragging its edges, or enter dimensions here. Lyrics wrap to your width. Font changes keep the window in place.</p>
+    </section>
     <section><h2>Behavior</h2>
-      <label class="control-row" for="alwaysOnTop">Always on top<input id="alwaysOnTop" type="checkbox"></label>
+      <p class="hint">The lyrics stay on top in both locked and unlocked mode.</p>
       <label class="control-row" for="clickThrough">Lock position and click-through<input id="clickThrough" type="checkbox"></label>
       <p class="hint">When locked, press Ctrl+Shift+, (Cmd+Shift+, on Mac) to reopen Settings.</p>
       <label for="hotkey">Show / hide shortcut</label><div class="input-row"><input id="hotkey" spellcheck="false"><button id="saveHotkey">Apply</button></div>
