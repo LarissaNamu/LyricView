@@ -1,6 +1,6 @@
 const get = id => document.getElementById(id);
 let state;
-const appearanceKeys = ['currentColor', 'otherColor', 'fontSize', 'fontFamily', 'opacity', 'linesShown', 'clickThrough', 'backdropColor', 'backdropStrength'];
+const appearanceKeys = ['currentColor', 'otherColor', 'fontSize', 'fontFamily', 'opacity', 'linesShown', 'clickThrough', 'gamingMode', 'backdropColor', 'backdropStrength'];
 function receive(next) {
   state = next;
   get('accountStatus').textContent = next.demo ? 'Previewing demo — no Spotify requests' : next.status === 'connecting' ? 'Connecting in your browser...' : next.connected ? 'Connected to Spotify' : 'Not connected';
@@ -10,7 +10,8 @@ function receive(next) {
   get('preview').textContent = next.demo ? 'Leave demo' : 'Try demo';
   for (const key of appearanceKeys) {
     const input = get(key); if (document.activeElement === input) continue;
-    if (input.type === 'checkbox') input.checked = next.settings[key]; else input.value = next.settings[key];
+    if (input.type === 'checkbox') input.checked = next.settings[key];
+    else if (input.value !== String(next.settings[key])) input.value = next.settings[key];
   }
   for (const [id, key] of [['windowWidth', 'width'], ['windowHeight', 'height']]) { if (document.activeElement !== get(id)) get(id).value = next.settings.position[key]; }
   if (document.activeElement !== get('clientId')) get('clientId').value = next.settings.spotifyClientId;

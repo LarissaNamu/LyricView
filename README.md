@@ -70,3 +70,5 @@ Core overlay, Spotify and LRCLIB integration, persistence, customization, click-
 The overlay uses equal 30px padding on all sides. Both window modes stay on top; locked mode passes clicks through the lyrics and prevents manual resizing, while its hover settings button remains clickable.
 
 Window size is now manual: drag the unlocked window edges or use Width/Height in Settings. Font changes leave the box size and position unchanged. Lyrics wrap, with the current lyric centered vertically; surrounding context can extend beyond a short window.
+
+For games, Keep above borderless games is enabled by default. LyricView raises its visible window once per second without activating it, and pauses that behavior while Settings is visible. Use Windowed Fullscreen in Valorant or borderless fullscreen in other games, close Settings and lock the overlay before playing. True exclusive fullscreen is not supported by this desktop overlay.

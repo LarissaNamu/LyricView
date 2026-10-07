@@ -4,7 +4,7 @@ const path = require('node:path');
 const DEFAULTS = Object.freeze({
   position: { width: 760, height: 240 }, fontSize: 32,
   fontFamily: 'Segoe UI', currentColor: '#ffffff', otherColor: '#b6bbc9',
-  opacity: 1, linesShown: 3, clickThrough: false, alwaysOnTop: true,
+  opacity: 1, linesShown: 3, clickThrough: false, gamingMode: true, alwaysOnTop: true,
   backdropColor: '#000000', backdropStrength: 0.22,
   hotkey: 'CommandOrControl+Shift+L', spotifyClientId: ''
 });
@@ -20,7 +20,7 @@ function sanitizeSettings(input = {}) {
   }
   if (['Segoe UI', 'Arial', 'Georgia', 'Verdana', 'monospace'].includes(input.fontFamily)) out.fontFamily = input.fontFamily;
   if ([1, 3, 5].includes(input.linesShown)) out.linesShown = input.linesShown;
-  for (const key of ['clickThrough']) if (typeof input[key] === 'boolean') out[key] = input[key];
+  for (const key of ['clickThrough', 'gamingMode']) if (typeof input[key] === 'boolean') out[key] = input[key];
   if (typeof input.hotkey === 'string' && input.hotkey.length > 0 && input.hotkey.length < 100) out.hotkey = input.hotkey;
   if (typeof input.spotifyClientId === 'string' && /^[a-f0-9]{32}$/i.test(input.spotifyClientId.trim())) out.spotifyClientId = input.spotifyClientId.trim();
   if (input.position && typeof input.position === 'object') {

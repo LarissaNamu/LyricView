@@ -10,7 +10,7 @@ let demo = process.argv.includes('--demo') || smoke;
 if (smoke) app.setPath('userData', path.join(__dirname, 'tmp', 'smoke-data'));
 let overlay, settingsWindow, store, spotify, lyrics, pollTimer, boundsTimer;
 let dragOrigin;
-let gearBounds, lockTimer, mouseIgnored, lastHoverKey;
+let gearBounds, gamingTimer, lockTimer, mouseIgnored, lastHoverKey, appliedLocked;
 let exiting = false;
 let generation = 0, demoStart = performance.now(), lyricTrack = null, retryLyricsAt = 0, failures = 0;
 let state = { status: 'disconnected', message: 'Connect Spotify to get started', connected: false, playback: null, lyrics: null, sampledAt: 0 };
@@ -37,16 +37,28 @@ const webPreferences = { preload: path.join(__dirname, 'preload.js'), contextIso
 function applyWindowSettings() {
   dragOrigin = null;
   const s = store.settings;
-  overlay.setMovable(!s.clickThrough); overlay.setResizable(!s.clickThrough);
-  overlay.setFocusable(!s.clickThrough);
+  // Appearance updates must not change native window styles or focus while a
+  // Settings color picker is open. Only a lock transition needs these calls.
+  if (appliedLocked !== s.clickThrough) {
+    overlay.setMovable(!s.clickThrough); overlay.setResizable(!s.clickThrough);
+    overlay.setFocusable(!s.clickThrough);
+    appliedLocked = s.clickThrough;
+    enforceTopmost();
+    clearInterval(lockTimer); lastHoverKey = undefined;
+    updateLockedHover();
+    if (s.clickThrough && !smoke) lockTimer = setInterval(updateLockedHover, 50);
+  }
+}
+function maintainGamingOverlay() {
+  if (exiting || !store.settings.gamingMode || !overlay || overlay.isDestroyed() || !overlay.isVisible() || overlay.isMinimized()) return;
+  // Settings and native color dialogs must keep their focus and stacking.
+  if (settingsWindow && !settingsWindow.isDestroyed() && settingsWindow.isVisible()) return;
   enforceTopmost();
-  clearInterval(lockTimer); lastHoverKey = undefined;
-  updateLockedHover();
-  if (s.clickThrough && !smoke) lockTimer = setInterval(updateLockedHover, 50);
+  overlay.moveTop(); // Raises the window without activating it or taking game input.
 }
 function enforceTopmost() {
   if (!overlay || overlay.isDestroyed() || exiting) return;
-  overlay.setAlwaysOnTop(true, 'screen-saver');
+  if (!overlay.isAlwaysOnTop()) overlay.setAlwaysOnTop(true, 'screen-saver');
 }
 function updateLockedHover(cursor = screen.getCursorScreenPoint()) {
   if (!overlay || overlay.isDestroyed()) return;
@@ -83,6 +95,7 @@ function createOverlay() {
   ]).popup({ window: overlay }));
   overlay.on('closed', () => { overlay = null; app.quit(); });
   applyWindowSettings();
+  if (!smoke) gamingTimer = setInterval(maintainGamingOverlay, 1000);
 }
 function openSettings() {
   if (settingsWindow && !settingsWindow.isDestroyed()) { if (!smoke) { settingsWindow.show(); settingsWindow.focus(); } return settingsWindow; }
@@ -177,7 +190,7 @@ function setupIpc() {
   handle('demo', enabled => { if (typeof enabled !== 'boolean') throw new Error('Invalid demo option'); switchDemo(enabled); });
   handle('settings-update', patch => {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('Invalid settings');
-    const allowed = ['fontSize', 'fontFamily', 'currentColor', 'otherColor', 'opacity', 'linesShown', 'clickThrough', 'alwaysOnTop', 'hotkey', 'spotifyClientId', 'backdropColor', 'backdropStrength', 'windowWidth', 'windowHeight'];
+    const allowed = ['fontSize', 'fontFamily', 'currentColor', 'otherColor', 'opacity', 'linesShown', 'clickThrough', 'gamingMode', 'alwaysOnTop', 'hotkey', 'spotifyClientId', 'backdropColor', 'backdropStrength', 'windowWidth', 'windowHeight'];
     if (Object.keys(patch).some(key => !allowed.includes(key))) throw new Error('Unknown setting');
     if (patch.spotifyClientId !== undefined && patch.spotifyClientId !== '' && !/^[a-f0-9]{32}$/i.test(patch.spotifyClientId.trim())) throw new Error('A Spotify Client ID must contain 32 hexadecimal characters.');
     if ((patch.hotkey !== undefined || patch.clickThrough === true) && !registerShortcuts(patch.hotkey ?? store.settings.hotkey)) { registerShortcuts(store.settings.hotkey); throw new Error('That shortcut is invalid, reserved, or already in use.'); }
@@ -281,6 +294,23 @@ async function smokeTest() {
   if (!overlay.isAlwaysOnTop() || overlay.isResizable() || overlay.isFocusable()) throw new Error('SMOKE FAIL [locked window]: topmost, resize or focus flags incorrect: ' + JSON.stringify({ topmost: overlay.isAlwaysOnTop(), resizable: overlay.isResizable(), focusable: overlay.isFocusable() }));
   overlay.emit('blur');
   if (!overlay.isAlwaysOnTop()) throw new Error('SMOKE FAIL [topmost]: blur cleared topmost');
+  // Color input events must not disturb native focus/stacking in locked mode.
+  const nativeCalls = [];
+  const nativeMethods = ['setFocusable', 'setMovable', 'setResizable', 'setAlwaysOnTop', 'setIgnoreMouseEvents'];
+  const originals = new Map(nativeMethods.map(name => [name, overlay[name]]));
+  try {
+    for (const name of nativeMethods) overlay[name] = function (...args) { nativeCalls.push(name); return originals.get(name).apply(this, args); };
+    await panel.webContents.executeJavaScript(`(async () => {
+      const picker = document.querySelector('#currentColor'); picker.focus();
+      for (const color of ['#123456', '#345678', '#abcdef']) {
+        picker.value = color; picker.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    })()`);
+    await waitFor(panel, 'state.settings.currentColor === "#abcdef"', 'live locked color updates');
+    if (nativeCalls.length) throw new Error('SMOKE FAIL [picker focus]: color input changed native window state: ' + nativeCalls.join(', '));
+    if (!(await panel.webContents.executeJavaScript('document.activeElement === document.querySelector("#currentColor")'))) throw new Error('SMOKE FAIL [picker focus]: color control lost focus');
+  } finally { for (const [name, method] of originals) overlay[name] = method; }
   if (!gearBounds) throw new Error('SMOKE FAIL [gear]: settings button bounds missing');
   const lockedBounds = overlay.getBounds();
   updateLockedHover({ x: lockedBounds.x - 10, y: lockedBounds.y - 10 });
@@ -297,11 +327,30 @@ async function smokeTest() {
   for (let i = 0; i < 50 && (!settingsWindow || settingsWindow.isDestroyed()); i++) await new Promise(resolve => setTimeout(resolve, 100));
   if (!settingsWindow || settingsWindow.isDestroyed()) throw new Error('SMOKE FAIL [lock]: clicking gear did not reopen Settings');
   console.log('SMOKE OK: locked settings gear reopened Settings');
+  const originalVisible = overlay.isVisible, originalMoveTop = overlay.moveTop;
+  const originalSettingsVisible = settingsWindow.isVisible;
+  let raises = 0;
+  try {
+    overlay.isVisible = () => true; overlay.moveTop = () => { raises++; };
+    settingsWindow.isVisible = () => true;
+    maintainGamingOverlay();
+    if (raises) throw new Error('SMOKE FAIL [gaming]: overlay raised over Settings');
+    settingsWindow.isVisible = () => false;
+    maintainGamingOverlay();
+    if (raises !== 1) throw new Error('SMOKE FAIL [gaming]: enabled gaming mode did not raise overlay');
+    store.update({ gamingMode: false }); maintainGamingOverlay();
+    if (raises !== 1) throw new Error('SMOKE FAIL [gaming]: disabled mode raised overlay');
+    store.update({ gamingMode: true }); overlay.isVisible = () => false; maintainGamingOverlay();
+    if (raises !== 1) throw new Error('SMOKE FAIL [gaming]: hidden overlay was raised');
+  } finally {
+    overlay.isVisible = originalVisible; overlay.moveTop = originalMoveTop; settingsWindow.isVisible = originalSettingsVisible;
+    store.update({ gamingMode: true });
+  }
   await overlay.webContents.executeJavaScript('window.lyricView.updateSettings({ clickThrough: false })');
   if (!overlay.isAlwaysOnTop() || !overlay.isResizable() || !overlay.isFocusable()) throw new Error('SMOKE FAIL [unlocked window]: topmost, resize or focus flags incorrect: ' + JSON.stringify({ topmost: overlay.isAlwaysOnTop(), resizable: overlay.isResizable(), focusable: overlay.isFocusable() }));
   // Screenshot capture depends on Chromium's graphics compositor and is not
   // required to validate rendering, IPC, isolation, or settings persistence.
-  console.log('SMOKE PASS: overlay, settings, persistence, backdrop, manual width/height, wrapped lyrics, lyric slide, song transition, topmost in both modes, fixed position through font changes, locked click-through and clickable hover gear');
+  console.log('SMOKE PASS: overlay, settings, persistence, backdrop, manual width/height, wrapped lyrics, lyric slide, song transition, topmost in both modes, fixed position through font changes, gaming raise and Settings exclusion, locked color input without native focus changes, locked click-through and clickable hover gear');
   // Exit the isolated fixture directly: the newly opened test window may still
   // be loading, and graceful window closure can defer test shutdown.
   app.emit('before-quit');
@@ -330,7 +379,7 @@ else {
 app.on('window-all-closed', () => app.quit());
 app.on('before-quit', () => {
   exiting = true;
-  clearInterval(lockTimer);
+  clearInterval(gamingTimer); clearInterval(lockTimer);
   clearTimeout(boundsTimer); stopPolling(); globalShortcut.unregisterAll(); spotify?.close();
   if (store && overlay && !overlay.isDestroyed()) store.update({ position: overlay.getBounds() });
 });

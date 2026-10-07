@@ -36,6 +36,12 @@ test('disconnected monitor positions recover inside the primary work area', () =
   assert.ok(result.x >= 0 && result.x + result.width <= 1280); assert.ok(result.y >= 0 && result.y + result.height <= 720);
 });
 const track = { id: 'test', name: 'Song', artists: [{ name: 'Artist' }], album: { name: 'Album' }, duration_ms: 120000 };
+test('gaming mode defaults on, persists and rejects invalid preferences', t => {
+  assert.equal(sanitizeSettings({}).gamingMode, true);
+  assert.equal(sanitizeSettings({ gamingMode: 'false' }).gamingMode, true);
+  const dir = directory(t), store = new Store(dir);
+  store.update({ gamingMode: false }); assert.equal(new Store(dir).settings.gamingMode, false);
+});
 test('both window modes always stay on top, including older saved preferences', () => {
   assert.equal(sanitizeSettings({ alwaysOnTop: false, clickThrough: true }).alwaysOnTop, true);
   assert.equal(sanitizeSettings({ alwaysOnTop: false, clickThrough: false }).alwaysOnTop, true);
